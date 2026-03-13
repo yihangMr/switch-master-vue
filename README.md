@@ -43,83 +43,71 @@ useSwitchWatch(dialogA.id,(newVal,oldVal,data)=>{
 </template>
 ```
 
-### 3. 核心概念
+### 3. 关于 SwitchRef
 
-#### 本质就是一个 `ref`
-
-`useSwitch` 返回的就是一个 Vue 的 `ref` 变量（类型为 `SwitchRef extends Ref<boolean>`），所以你可以像使用普通 `ref` 一样直接读写它，也可以直接放在模板里自动解包：
+`useSwitch` 返回的是一个增强的 Vue `ref`，除了响应式的布尔值，还携带了额外的属性：
 
 ```typescript
+import { useSwitch } from "switch-master-vue";
+
 const dialogA = useSwitch("dialog-a");
 
-// 脚本中通过 .value 读写
+// 像普通 ref 一样读写
 dialogA.value = true;
-console.log(dialogA.value); // true
 
-// 模板中自动解包，无需 .value
-// <div v-if="dialogA">...</div>
+// 通过 .data 挂载自定义元数据
+dialogA.data = { description: "控制弹窗 A 的显示状态" };
+
+// 通过 .listen 查看所有已注册的监听回调（仅 useSwitchWatch 注册的）
+console.log(dialogA.listen); // Set { fn1, fn2, ... }
 ```
 
-#### 通过 `.data` 挂载自定义属性
+> 不同组件中调用 `useSwitch("dialog-a")` 得到的是**同一个响应式引用**，状态天然同步，无需额外通信。
 
-每个开关上都有一个 `.data` 属性（`Record<string, any>`），你可以在上面挂载任意自定义数据，用于存储与开关相关的业务信息：
+### 4. 封装自定义开关类型
 
-```typescript
-const dialogA = useSwitch("dialog-a");
-
-// 挂载自定义数据
-dialogA.data = { title: "确认删除", level: "danger" };
-
-// 随时读取
-console.log(dialogA.data.title); // "确认删除"
-```
-
-> `.data` 会在 `useSwitchWatch` 的回调中作为第三个参数传入，方便你在监听时获取上下文信息。
-
-#### 通过 `.listen` 查看所有监听器
-
-每个开关的 `.listen` 是一个 `Set<SwitchWatchFn>`，保存了所有正在监听该开关状态变化的回调函数。你可以通过它快速了解当前有多少地方在关注这个开关，方便调试和排查：
+基于 `master.addSwitch` 和 Vue 的 `watch`，你可以封装出适配业务场景的开关工厂函数。例如，在数字孪生项目中，封装一个"图层开关"——开关状态变化时自动通知地图引擎切换图层显隐：
 
 ```typescript
-const dialogA = useSwitch("dialog-a");
+import { watch } from "vue";
+import master from "switch-master-vue";
+import mitt from "./mitt";
 
-// 通过 useSwitchWatch 注册的回调会自动收集到 .listen 中
-useSwitchWatch("dialog-a", (newVal, oldVal) => {
-  console.log(`dialogA 状态从 ${oldVal} 变为 ${newVal}`);
+function createLayerSwitch(config: {
+  id: string;
+  name: string;
+  layerId: string | string[];
+  visible?: boolean;
+}) {
+  const switchRef = master.addSwitch({
+    id: config.id,
+    name: config.name,
+    initOpened: config.visible || false,
+    data: { layerId: config.layerId },
+  });
+
+  watch(() => switchRef.value, (newVal) => {
+    let layerIds = config.layerId;
+    if (!Array.isArray(layerIds)) layerIds = [layerIds];
+    const layer = Object.fromEntries(layerIds.map(id => [id, newVal]));
+    mitt.emit("Map:toggleLayer", { layer });
+  });
+
+  return switchRef;
+}
+
+// 使用：一行代码创建一个图层开关
+const buildingLayer = createLayerSwitch({
+  id: "LAYER_BUILDING",
+  name: "楼栋模型",
+  layerId: ["layer-id-1", "layer-id-2", "layer-id-3"],
+  visible: true,
 });
-
-// 查看当前有几个监听器
-console.log(dialogA.listen.size);
-
-// 遍历所有监听器
-dialogA.listen.forEach(fn => console.log(fn));
 ```
 
-#### 跨组件共享同一数据源
+同理，你可以封装出表单开关、权限开关、主题开关等任意业务开关类型。
 
-不同组件中调用 `useSwitch("dialog-a")` 拿到的是**同一个** `SwitchRef` 实例。所有组件共享同一份状态，任何一处修改都会自动同步到其他所有使用该开关的地方：
 
-```vue
-<!-- ComponentA.vue -->
-<script setup>
-import { useSwitch } from "switch-master-vue";
-const dialogA = useSwitch("dialog-a");
-</script>
-<template>
-  <button @click="dialogA = !dialogA">切换弹窗</button>
-</template>
-
-<!-- ComponentB.vue -->
-<script setup>
-import { useSwitch } from "switch-master-vue";
-const dialogA = useSwitch("dialog-a"); // 同一个实例
-</script>
-<template>
-  <div v-if="dialogA">弹窗 A 的内容</div>
-</template>
-```
-
-> 无需 `provide/inject`、`pinia` 或 `eventBus`，开关状态天然跨组件共享。
 
 ## API
 
