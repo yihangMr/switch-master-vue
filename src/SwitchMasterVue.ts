@@ -20,6 +20,7 @@ const createSwitch = ({id,name,data = {},initOpened = false}:CreateSwitchConfig)
 
 class SwitchMasterVue {
     switchMap: Record<string, SwitchRef> = {};
+    initialStatus: Record<string, boolean> = {};
     constructor(switchIds: string[] = [], initOpenedSwitchs:string[] = []) {
         this.createSwitchs(switchIds, initOpenedSwitchs);
     };
@@ -35,7 +36,9 @@ class SwitchMasterVue {
             if(this.switchMap.hasOwnProperty(id)) {
                 throw new Error(`开关 ${id} 已存在，请保证id唯一。第 ${index + 1} 个开关创建失败`);
             }else{
-                this.switchMap[id] = createSwitch({id,name:id,data: {},initOpened:initOpenMap[id] || false});
+                const opened = initOpenMap[id] || false;
+                this.switchMap[id] = createSwitch({id,name:id,data: {},initOpened:opened});
+                this.initialStatus[id] = opened;
             }
         });
         
@@ -46,6 +49,7 @@ class SwitchMasterVue {
         }
         const switchRef = createSwitch({ id, name, data, initOpened });
         this.switchMap[id] = switchRef;
+        this.initialStatus[id] = initOpened;
         return switchRef;
     }
     getSwitchById(id:string):SwitchRef {
@@ -60,11 +64,17 @@ class SwitchMasterVue {
             switchRef.value = true;
         }
     };
+    openByIds(ids:string[]):void {
+        ids.forEach(id => this.openSwitchById(id));
+    };
     closeSwitchById(id:string):void {
         let switchRef = this.getSwitchById(id);
         if(switchRef){
             switchRef.value = false;
         }
+    };
+    closeByIds(ids:string[]):void {
+        ids.forEach(id => this.closeSwitchById(id));
     };
     toggleSwitchById(id:string):void {
         let switchRef = this.getSwitchById(id);
@@ -79,6 +89,12 @@ class SwitchMasterVue {
         let switchRef = this.switchMap[id];
         if(switchRef?.stopWatch) switchRef.stopWatch();
         delete this.switchMap[id];
+        delete this.initialStatus[id];
+    };
+    reset():void {
+        Object.keys(this.switchMap).forEach(id => {
+            this.switchMap[id].value = this.initialStatus[id] ?? false;
+        });
     };
 }
 

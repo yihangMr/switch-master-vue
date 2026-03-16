@@ -1,6 +1,7 @@
 {
   "name": "switch-master-vue",
   "version": "1.0.0",
+  "main": "dist/index.js",
   "type": "module",
   "types": "dist/index.d.ts",
   "exports": {
@@ -12,13 +13,17 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yihangMr/switch-master-vue.git"
+  },
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["vue3","vue","switch","toggle","state"],
+  "author": "yihang_Mr",
+  "license": "MIT",
   "description": "Vue3 开关状态管理工具",
   "peerDependencies": {
     "vue": ">=3.0.0"
