@@ -58,7 +58,7 @@ dialogA.value = true;
 // 通过 .data 挂载自定义元数据
 dialogA.data = { description: "控制弹窗 A 的显示状态" };
 
-// 通过 .listen 查看所有已注册的监听回调（仅 useSwitchWatch 注册的）
+// 通过 .listen 查看所有已注册的监听回调（useSwitchWatch和master.addSwitchWatch 注册的）
 console.log(dialogA.listen); // Set { fn1, fn2, ... }
 ```
 
@@ -66,46 +66,53 @@ console.log(dialogA.listen); // Set { fn1, fn2, ... }
 
 ### 4. 封装自定义开关类型
 
-基于 `master.addSwitch` 和 Vue 的 `watch`，你可以封装出适配业务场景的开关工厂函数。例如，在数字孪生项目中，封装一个"图层开关"——开关状态变化时自动通知地图引擎切换图层显隐：
+基于 `master.addSwitch` 和 `master.addSwitchWatch`，你可以封装出适配业务场景的开关工厂函数。例如，在数字孪生项目中，封装一个"图层开关"——开关状态变化时自动通知地图引擎切换图层显隐：
 
 ```typescript
-import { watch } from "vue";
+import { nameGroup } from "@configs/switchs";
+import mitt from "@utils/mitt";
 import master from "switch-master-vue";
-import mitt from "./mitt";
 
-function createLayerSwitch(config: {
-  id: string;
-  name: string;
-  layerId: string | string[];
-  visible?: boolean;
-}) {
-  const switchRef = master.addSwitch({
-    id: config.id,
-    name: config.name,
-    initOpened: config.visible || false,
-    data: { layerId: config.layerId },
-  });
+master.createSwitchs(
+  Object.values(nameGroup),
+);
 
-  watch(() => switchRef.value, (newVal) => {
-    let layerIds = config.layerId;
-    if (!Array.isArray(layerIds)) layerIds = [layerIds];
-    const layer = Object.fromEntries(layerIds.map(id => [id, newVal]));
-    mitt.emit("Map:toggleLayer", { layer });
-  });
-
-  return switchRef;
+interface LayerSwitchConfig {
+    id: string;
+    name: string;
+    layerId: string[];
+    visible?: boolean;
 }
 
-// 使用：一行代码创建一个图层开关
-const buildingLayer = createLayerSwitch({
-  id: "LAYER_BUILDING",
-  name: "楼栋模型",
-  layerId: ["layer-id-1", "layer-id-2", "layer-id-3"],
-  visible: true,
-});
+export function createLayerSwitch(config: LayerSwitchConfig) {
+    const switchRef = master.addSwitch({
+        id: config.id,
+        name: config.name,
+        initOpened: config.visible || false,
+        data: { layerId: config.layerId },
+    });
+
+    // 注意：这里使用 master.addSwitchWatch 而不是 useSwitchWatch
+    // 因为 Hook 只能在组件的 setup() 中调用，而这里是普通函数
+    master.addSwitchWatch(switchRef.id, (newVal) => {
+        const layer = Object.fromEntries(config.layerId.map(item => [item, newVal]));
+        mitt.emit("Map:toggleLayer", { layer });
+    }, true);
+
+    return switchRef;
+}
+
+
+
 ```
 
 同理，你可以封装出表单开关、权限开关、主题开关等任意业务开关类型。
+
+### 5. 关于 Hook
+
+`useSwitch`、`useToggle`、`useSwitchWatch` 都是组件级的 Hook，请像 React 的 Hook 或 Vue 3 的生命周期钩子一样使用——**在组件的 `setup()` 同步执行阶段中调用**。不要在 `setTimeout`、`await` 之后或组件外部调用，否则可能无法正确绑定组件生命周期。
+
+如果需要在组件外部（如工具函数、工厂函数中）监听开关变化，请使用 `master.addSwitchWatch` 代替 `useSwitchWatch`。
 
 
 
@@ -135,6 +142,20 @@ const buildingLayer = createLayerSwitch({
 | `config.initOpened` | `boolean` | 否 | 初始是否打开，默认 `false` |
 | `config.data` | `Record<string, any>` | 否 | 附带的自定义数据 |
 
+#### `master.addSwitchWatch(config)`
+
+给某个开关添加一个监听监听器，返回 一个用于清除回调的事件。
+
+| 参数               | 类型          | 必填 | 说明                 |
+| ------------------ | ------------- | ---- | -------------------- |
+| `config.id`        | `string`      | 是   | 开关唯一标识         |
+| `config.watchFn`   | SwitchWatchFn | 是   | 一个开关的监听器事件 |
+| `config.immediate` | `boolean`     | 否   | 是否立即执行一遍     |
+
+返回一个function用于清除此监听器。
+
+
+
 #### `master.getSwitchById(id)`
 
 根据 id 获取开关的 `SwitchRef`。
@@ -143,9 +164,33 @@ const buildingLayer = createLayerSwitch({
 
 打开指定开关。
 
+#### `master.openByIds(ids)`
+
+批量打开开关。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `ids` | `string[]` | 要打开的开关 id 列表 |
+
+```typescript
+master.openByIds(["dialog-a", "dialog-b", "panel"]);
+```
+
 #### `master.closeSwitchById(id)`
 
 关闭指定开关。
+
+#### `master.closeByIds(ids)`
+
+批量关闭开关。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `ids` | `string[]` | 要关闭的开关 id 列表 |
+
+```typescript
+master.closeByIds(["dialog-a", "dialog-b"]);
+```
 
 #### `master.toggleSwitchById(id)`
 
@@ -155,9 +200,33 @@ const buildingLayer = createLayerSwitch({
 
 删除指定开关，同时停止其内部 watcher。
 
+#### `master.initialStatus`
+
+`Record<string, boolean>` 类型，记录每个开关创建时的初始状态。创建和删除开关时自动维护，可用于状态重置的参考。
+
+```typescript
+// 创建开关后，initialStatus 自动记录初始值
+master.createSwitchs(["a", "b", "c"], ["a"]);
+console.log(master.initialStatus);
+// { a: true, b: false, c: false }
+```
+
+#### `master.reset()`
+
+将所有开关恢复到创建时的初始状态。
+
+```typescript
+master.openByIds(["a", "b", "c"]); // 全部打开
+master.reset(); // 恢复：a=true, b=false, c=false
+```
+
 ---
 
-### useSwitch(id)
+### Hooks
+
+> **注意：** 以下所有 Hook 应在组件的 `setup()` 同步执行阶段中调用。不要在 `setTimeout`、`await` 之后或组件外部调用，否则可能无法正确绑定组件生命周期。
+
+#### useSwitch(id)
 
 获取指定开关的 `SwitchRef`，可直接在模板中响应式使用。
 
@@ -173,7 +242,7 @@ const sw = useSwitch("dialog-a");
 
 ---
 
-### useSwitchWatch(id, watchFn, immediate?)
+#### useSwitchWatch(id, watchFn, immediate?)
 
 监听开关状态变化，自动在组件 `onMounted` 时注册、`onUnmounted` 时注销。
 
@@ -193,7 +262,7 @@ useSwitchWatch("dialog-a", (newVal, oldVal, data) => {
 
 ---
 
-### useToggle(switchIds)
+#### useToggle(switchIds)
 
 创建一组互斥开关（单选逻辑），返回一个切换函数。被选中的开关打开，其余自动关闭。
 
@@ -245,6 +314,13 @@ useSwitchWatch("sidebar", (newVal) => {
 // 组件 C：Tab 切换（互斥）
 const toggleTab = useToggle(["tab-1", "tab-2", "tab-3"]);
 toggleTab("tab-1"); // 只有 tab-1 打开
+
+// 批量操作
+master.openByIds(["modal", "sidebar"]);
+master.closeByIds(["tab-1", "tab-2", "tab-3"]);
+
+// 重置所有开关到初始状态
+master.reset();
 
 // 动态添加开关
 master.addSwitch({ id: "tooltip", initOpened: false, data: { text: "提示" } });

@@ -52,14 +52,18 @@ class SwitchMasterVue {
         this.initialStatus[id] = initOpened;
         return switchRef;
     };
-    addSwitchWatch(id:string,watchFn:SwitchWatchFn,immediate:boolean = false):void {
-        let switchRef = this.getSwitchById(id);
-        if(switchRef){
-            switchRef.listen.add(watchFn);
+    addSwitchWatch(id:string,watchFn:SwitchWatchFn,immediate:boolean = false):() => void {
+        const switchRef = this.getSwitchById(id);
+        if (!watchFn) {
+            throw new Error('参数 watchFn 是必传的');
         }
+        switchRef.listen.add(watchFn);
         if(immediate){
             watchFn(switchRef.value,undefined,switchRef.data);
         }
+        return () => {
+            switchRef.listen.delete(watchFn);
+        };
     };
     getSwitchById(id:string):SwitchRef {
         if(!this.switchMap.hasOwnProperty(id)){
