@@ -1,5 +1,5 @@
 import { ref,watch } from "vue";
-import type { SwitchRef, CreateSwitchConfig } from "./Type";
+import type { SwitchRef, CreateSwitchConfig, SwitchWatchFn } from "./Type";
 
 const createSwitch = ({id,name,data = {},initOpened = false}:CreateSwitchConfig):SwitchRef => {
     const statusRef:SwitchRef = ref(initOpened) as SwitchRef;
@@ -51,7 +51,16 @@ class SwitchMasterVue {
         this.switchMap[id] = switchRef;
         this.initialStatus[id] = initOpened;
         return switchRef;
-    }
+    };
+    addSwitchWatch(id:string,watchFn:SwitchWatchFn,immediate:boolean = false):void {
+        let switchRef = this.getSwitchById(id);
+        if(switchRef){
+            switchRef.listen.add(watchFn);
+        }
+        if(immediate){
+            watchFn(switchRef.value,undefined,switchRef.data);
+        }
+    };
     getSwitchById(id:string):SwitchRef {
         if(!this.switchMap.hasOwnProperty(id)){
             throw new Error(`开关 ${id} 不存在`);
