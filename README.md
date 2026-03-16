@@ -69,41 +69,37 @@ console.log(dialogA.listen); // Set { fn1, fn2, ... }
 基于 `master.addSwitch` 和 `master.addSwitchWatch`，你可以封装出适配业务场景的开关工厂函数。例如，在数字孪生项目中，封装一个"图层开关"——开关状态变化时自动通知地图引擎切换图层显隐：
 
 ```typescript
-import { nameGroup } from "@configs/switchs";
+import { nameGroup, switchGroup } from "@configs/switchs";
 import mitt from "@utils/mitt";
 import master from "switch-master-vue";
+import { useSwitch,useToggle,useSwitchWatch } from "switch-master-vue";
 
 master.createSwitchs(
   Object.values(nameGroup),
 );
 
-interface LayerSwitchConfig {
-    id: string;
-    name: string;
-    layerId: string[];
-    visible?: boolean;
-}
-
-export function createLayerSwitch(config: LayerSwitchConfig) {
-    const switchRef = master.addSwitch({
-        id: config.id,
-        name: config.name,
-        initOpened: config.visible || false,
-        data: { layerId: config.layerId },
-    });
-
-    // 注意：这里使用 master.addSwitchWatch 而不是 useSwitchWatch
+export function createAirCityLayerSwitch(config) {
+	const switchRef = master.addSwitch({
+		id: config.id,
+		name: config.name,
+		initOpened: config.visible || false,
+		data: { layerId: config.layerId },
+	});
+	// 注意：这里使用 master.addSwitchWatch 而不是 useSwitchWatch
     // 因为 Hook 只能在组件的 setup() 中调用，而这里是普通函数
-    master.addSwitchWatch(switchRef.id, (newVal) => {
-        const layer = Object.fromEntries(config.layerId.map(item => [item, newVal]));
-        mitt.emit("Map:toggleLayer", { layer });
-    }, true);
-
-    return switchRef;
+    // master.addSwitchWatch会返回一个用于清除监听的回调
+	const stopWatch = master.addSwitchWatch(switchRef.id, (newVal) => {
+		let layer = Object.fromEntries(config.layerId.map(item => [item, newVal]));
+		mitt.emit("Map:toggleLayer",{
+			layer
+		});
+	},true);
+    // stopWatch(); // 清除监听器
+	return switchRef;
 }
 
-
-
+export default master;
+export { useSwitch,useToggle,useSwitchWatch };
 ```
 
 同理，你可以封装出表单开关、权限开关、主题开关等任意业务开关类型。
